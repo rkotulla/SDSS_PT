@@ -5,6 +5,10 @@ import sys
 import pyfits
 
 import warnings
+import tempfile
+
+
+scratch_dir = "/tmp"
 
 def convert_sdss(in_file, out_file):
 
@@ -28,7 +32,28 @@ def convert_sdss(in_file, out_file):
     hdulist[0].header['CRPIX1'] = hdulist[0].header['NAXIS1']/2
     hdulist[0].header['CRPIX2'] = hdulist[0].header['NAXIS2']/2
 
+    hdulist[0].header['OBJECT'] = \
+        "%s -- %s" % (hdulist[0].header['NAME'], hdulist[0].header['FILTER'])
+
+    #return hdulist
     hdulist.writeto(out_file, clobber=True)
+
+
+def open_sdss_fits(filename):
+
+    tmp_file = tempfile.TemporaryFile(
+        suffix=".fits", prefix="sdsspt_",
+    )
+    #print tmp_file
+    hdu_raw = convert_sdss(filename, tmp_file)
+    #hdu_raw.writeto(tmp_file) #, mode='spool')
+
+    tmp_file.seek(0)
+
+    #print "opening file"
+    hdulist = pyfits.open(tmp_file)
+
+    return hdulist
 
 
 if __name__ =="__main__":
