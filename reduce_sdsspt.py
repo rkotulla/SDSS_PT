@@ -6,6 +6,7 @@ import pyfits
 import numpy
 from optparse import OptionParser
 import tempfile
+import logging
 
 import sdss2fits
 
@@ -14,6 +15,8 @@ sys.path.append(config.qr_dir)
 
 import dev_ccmatch
 from podi_definitions import SXcolumn
+from podi_collectcells import apply_wcs_distortion
+import podi_logging
 
 def reduce_sdss(fn,
                 overscan=True,
@@ -25,6 +28,9 @@ def reduce_sdss(fn,
 
                 bias_hdu=None,
                 flat_hdus=None,):
+
+    _,bn = os.path.split(fn)
+    logger = logging.getLogger("ReduceSDSS(%s)" % (bn[:-4]))
 
     if (caldir is not None):
         bias_fn = "%s/masterbias.fits" % (caldir)
@@ -89,11 +95,11 @@ def reduce_sdss(fn,
     # subtract off bias if valid data
     #
     if (bias_hdu is not None):
-        print "subtracting bias"
+        logger.info("subtracting bias")
         data -= bias_hdu['SCI'].data
 
     if (flat_hdus is not None and filtername in flat_hdus):
-        print "correcting flat-field"
+        logger.info("correcting flat-field")
         data /= flat_hdus[filtername]['SCI'].data
 
     #
@@ -101,30 +107,37 @@ def reduce_sdss(fn,
     #
     hdulist[1].data = data
 
+
+    #
+    # Import the WCS solution from the pre-canned distortion model
+    #
+    basedir, _ = os.path.split(os.path.abspath(__file__))
+    wcsmodel = "%s/wcs/wcs.fits" % (basedir)
+    apply_wcs_distortion(wcsmodel, hdulist['SCI'], binning=1)
+
     if (fixwcs):
         # write current frame to temporary file
         tmpfile = tempfile.NamedTemporaryFile(
             suffix=".fits",
             delete=True,
         )
-        print tmpfile.name
+        logger.debug("Writing temp file for sextractor: %s" % (tmpfile.name))
         hdulist.writeto(tmpfile)
 
         # Run sextractor to get source catalog
         catfile, catfilename = tempfile.mkstemp(suffix=".cat")
-        basedir,_ = os.path.split(os.path.abspath(__file__))
         sex_config = "%s/config/wcsfix.sex" % (config.qr_dir)
         sex_param = "%s/config/wcsfix.sexparam" % (config.qr_dir)
         sex_cmd = "sex -c %s -PARAMETERS_NAME %s -CATALOG_NAME %s %s" % (
             sex_config, sex_param, catfilename, tmpfile.name
         )
-        print sex_cmd
+        logger.info("Running sextractor: %s" % (sex_cmd))
         os.system(sex_cmd)
 
         # load catalog
         source_catalog = numpy.loadtxt(catfilename)
         source_catalog[:, SXcolumn['ota']] = 0
-        print source_catalog.shape
+        logger.info("Found %d sources" % (source_catalog.shape[0]))
 
         hdulist[0].header['FILTER'] = "odi_%s" % (hdulist[0].header['FILTER'])
         hdulist[1].header['OTA'] = 0
@@ -136,15 +149,18 @@ def reduce_sdss(fn,
             max_pointing_error=15,
             use_ota_coord_grid=False,
         )
-        print ccmatch_results
+        #print ccmatch_results
 
 
-
+    logger.info("done!")
 
     return hdulist
 
 
 if __name__ == "__main__":
+
+    logsetup = {}
+    podi_logging.setup_logging(logsetup)
 
     parser = OptionParser()
     parser.add_option("", "--show", dest="show",
@@ -158,7 +174,7 @@ if __name__ == "__main__":
 
     show_list = []
 
-    for fn in cmdline_args[1:]:
+    for fn in cmdline_args:
         hdulist = reduce_sdss(fn,
                               caldir=options.caldir,
                               fixwcs=options.fixwcs,)
@@ -177,3 +193,6 @@ if __name__ == "__main__":
 
     if (options.show):
         os.system("ds9 %s &" % (" ".join(show_list)))
+
+
+    podi_logging.shutdown_logging(logsetup)
