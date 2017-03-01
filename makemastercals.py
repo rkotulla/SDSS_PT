@@ -29,7 +29,7 @@ def make_master_bias(filelist):
             subtract_bias=False,
             correct_flat=False,
         )
-        datablocks.append(valid_hdu[0].data)
+        datablocks.append(valid_hdu['SCI'].data)
 
     # print datablocks
 
@@ -38,8 +38,11 @@ def make_master_bias(filelist):
         operation='sigmaclipmean'
     )
 
-    masterbias_hdu = pyfits.HDUList([pyfits.PrimaryHDU(
-        data=masterbias
+    masterbias_hdu = pyfits.HDUList([
+        pyfits.PrimaryHDU(),
+        pyfits.ImageHDU(
+            data=masterbias,
+            name='SCI',
     )])
 
     return masterbias_hdu
@@ -60,24 +63,29 @@ def make_master_flat(filelist, bias_hdu):
         )
 
         # normalize flatfield using the central 50%
-        flatraw = valid_hdu[0].data
+        flatraw = valid_hdu['SCI'].data
 
         norm_area = flatraw[
             int(0.25*flatraw.shape[0]):int(0.75*flatraw.shape[0]),
             int(0.25*flatraw.shape[1]):int(0.75*flatraw.shape[1])]
         norm_intensity = numpy.median(norm_area)
+        print norm_intensity
 
         flat_norm = flatraw / norm_intensity
-        flat_norm[flat_norm < 0.2] = numpy.NaN
+        flat_norm[flat_norm < 0.1] = numpy.NaN
 
+        pyfits.PrimaryHDU(data=flat_norm).writeto(fn[:-4]+".norm.fits", clobber=True)
         datablocks.append(flat_norm)
 
     masterflat = podi_imcombine.imcombine_data(
         datas=datablocks,
         operation='sigmaclipmean'
     )
-    masterflat_hdu = pyfits.HDUList([pyfits.PrimaryHDU(
-        data=masterflat
+    masterflat_hdu = pyfits.HDUList([
+        pyfits.PrimaryHDU(),
+        pyfits.ImageHDU(
+            data=masterflat,
+            name='SCI',
     )])
 
     return masterflat_hdu

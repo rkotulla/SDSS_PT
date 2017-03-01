@@ -6,7 +6,9 @@ import pyfits
 
 import warnings
 import tempfile
+import numpy
 
+from optparse import OptionParser
 
 scratch_dir = "/tmp"
 
@@ -22,21 +24,10 @@ def convert_sdss(in_file, out_file):
     del hdulist[0].header['SDSS']
     del hdulist[0].header['UNSIGNED']
 
-    pixelscale = 1.16 / 3600.
-    hdulist[0].header['CRVAL1'] = hdulist[0].header['RADEG']
-    hdulist[0].header['CRVAL2'] = hdulist[0].header['DECDEG']
-    hdulist[0].header['CTYPE1'] = 'RA---TAN'
-    hdulist[0].header['CTYPE2'] = 'DEC--TAN'
-    hdulist[0].header['CD1_1'] = pixelscale
-    hdulist[0].header['CD2_2'] = pixelscale
-    hdulist[0].header['CRPIX1'] = hdulist[0].header['NAXIS1']/2
-    hdulist[0].header['CRPIX2'] = hdulist[0].header['NAXIS2']/2
-
-    hdulist[0].header['OBJECT'] = \
-        "%s -- %s" % (hdulist[0].header['NAME'], hdulist[0].header['FILTER'])
-
     #return hdulist
     hdulist.writeto(out_file, clobber=True)
+
+
 
 
 def open_sdss_fits(filename):
@@ -49,21 +40,105 @@ def open_sdss_fits(filename):
     #hdu_raw.writeto(tmp_file) #, mode='spool')
 
     tmp_file.seek(0)
-
-    #print "opening file"
     hdulist = pyfits.open(tmp_file)
 
-    return hdulist
+    #
+    # Now we have a very basic FITS-compatible image.
+    # separate image data from primary header to make things more compatible
+    # with the quickreduce workflow.
+    #
+
+    #
+    # Fix the data to account for it being UNSIGNED rather than signed int
+    #
+    data = hdulist[0].data.copy().astype(numpy.int32)
+    print data.dtype
+    # data[data<0] *= -1
+    data[data<0] += 2**16
+    #data = data.astype(numpy.uint16)
+    #data = data.astype(numpy.uint16)
+    #data.dtype = numpy.uint16
+
+    primhdu = pyfits.PrimaryHDU(header=hdulist[0].header)
+    imagehdu = pyfits.ImageHDU(
+        data=data,
+        name="SCI"
+    )
+
+    pixelscale = 1.16 / 3600.
+    imagehdu.header['CRVAL1'] = hdulist[0].header['RADEG']
+    imagehdu.header['CRVAL2'] = hdulist[0].header['DECDEG']
+    imagehdu.header['CTYPE1'] = 'RA---TAN'
+    imagehdu.header['CTYPE2'] = 'DEC--TAN'
+    imagehdu.header['CD1_1'] = pixelscale
+    imagehdu.header['CD2_2'] = pixelscale
+    imagehdu.header['CRPIX1'] = hdulist[0].header['NAXIS1']/2
+    imagehdu.header['CRPIX2'] = hdulist[0].header['NAXIS2']/2
+
+    imagehdu.header['OBJECT'] = \
+        "%s -- %s" % (hdulist[0].header['NAME'], hdulist[0].header['FILTER'])
+
+    # data = hdulist[0].data
+    # print data.shape, data.dtype
+    #
+    # data.dtype=numpy.int16
+    # ny = hdulist[0].header['NAXIS2']
+    # nx = hdulist[0].header['NAXIS1']
+    # data = data.reshape((ny,nx))
+    # print data.shape, data.dtype
+    # imagehdu = pyfits.ImageHDU(data=hdulist[0].data)
+
+    # hdulist[0].header['SIMPLE'] = True
+    # imagehdu.header['BITPIX'] = 16
+    # imagehdu.header['NAXIS'] = 2
+    # del hdulist[0].header['SDSS']
+    # del hdulist[0].header['UNSIGNED']
+
+
+
+    # pixelscale = 1.16 / 3600.
+    #
+    # hdulist[0].header['NAXIS'] = 0
+    # del hdulist[0].header['NAXIS1']
+    # del hdulist[0].header['NAXIS2']
+
+    #return hdulist
+    # primhdu = pyfits.PrimaryHDU(header=hdulist[0].header)
+    out_hdulist = pyfits.HDUList([primhdu, imagehdu])
+    # hdulist.writeto(out_file, clobber=True)
+    #out_hdulist.writeto(out_file, clobber=True)
+
+
+
+    #print "opening file"
+    #hdulist = pyfits.open(tmp_file)
+
+    return out_hdulist
 
 
 if __name__ =="__main__":
 
 
-    infile = sys.argv[1]
+    parser = OptionParser()
+    parser.add_option("", "--show", dest="show",
+                       action="store_true", default=False)
+    (options, cmdline_args) = parser.parse_args()
 
-    for infile in sys.argv[1:]:
+
+    show_list = []
+    for infile in cmdline_args[0:]:
+
         outfile = infile[:-4]+".fits"
         if (os.path.isfile(outfile)):
             continue
         print "%s ==> %s" % (infile, outfile)
-        convert_sdss(infile, outfile)
+        # convert_sdss(infile, outfile)
+
+        hdu = open_sdss_fits(infile)
+        hdu.writeto(outfile, clobber=True)
+
+        if (options.show):
+            show_list.append(outfile)
+
+    if (options.show):
+        os.system("ds9 %s &" % (" ".join(show_list)))
