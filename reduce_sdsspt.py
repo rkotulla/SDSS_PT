@@ -5,10 +5,15 @@ import sys
 import pyfits
 import numpy
 from optparse import OptionParser
-
+import tempfile
 
 import sdss2fits
 
+import config
+sys.path.append(config.qr_dir)
+
+import dev_ccmatch
+from podi_definitions import SXcolumn
 
 def reduce_sdss(fn,
                 overscan=True,
@@ -16,6 +21,7 @@ def reduce_sdss(fn,
                 caldir=None,
                 subtract_bias=None,
                 correct_flat=None,
+                fixwcs=False,
 
                 bias_hdu=None,
                 flat_hdus=None,):
@@ -95,6 +101,46 @@ def reduce_sdss(fn,
     #
     hdulist[1].data = data
 
+    if (fixwcs):
+        # write current frame to temporary file
+        tmpfile = tempfile.NamedTemporaryFile(
+            suffix=".fits",
+            delete=True,
+        )
+        print tmpfile.name
+        hdulist.writeto(tmpfile)
+
+        # Run sextractor to get source catalog
+        catfile, catfilename = tempfile.mkstemp(suffix=".cat")
+        basedir,_ = os.path.split(os.path.abspath(__file__))
+        sex_config = "%s/config/wcsfix.sex" % (config.qr_dir)
+        sex_param = "%s/config/wcsfix.sexparam" % (config.qr_dir)
+        sex_cmd = "sex -c %s -PARAMETERS_NAME %s -CATALOG_NAME %s %s" % (
+            sex_config, sex_param, catfilename, tmpfile.name
+        )
+        print sex_cmd
+        os.system(sex_cmd)
+
+        # load catalog
+        source_catalog = numpy.loadtxt(catfilename)
+        source_catalog[:, SXcolumn['ota']] = 0
+        print source_catalog.shape
+
+        hdulist[0].header['FILTER'] = "odi_%s" % (hdulist[0].header['FILTER'])
+        hdulist[1].header['OTA'] = 0
+        ccmatch_results = dev_ccmatch.ccmatch(
+            source_catalog=source_catalog,
+            reference_catalog=None,
+            input_hdu=hdulist,
+            mode='otashear',
+            max_pointing_error=15,
+            use_ota_coord_grid=False,
+        )
+        print ccmatch_results
+
+
+
+
     return hdulist
 
 
@@ -103,15 +149,19 @@ if __name__ == "__main__":
     parser = OptionParser()
     parser.add_option("", "--show", dest="show",
                        action="store_true", default=False)
+    parser.add_option("", "--cals", dest="caldir",
+                       default=None, type=str)
+    parser.add_option("", "--fixwcs", dest="fixwcs",
+                       action="store_true", default=False)
     (options, cmdline_args) = parser.parse_args()
 
 
     show_list = []
 
-    caldir = cmdline_args[0]
-
     for fn in cmdline_args[1:]:
-        hdulist = reduce_sdss(fn, caldir=caldir)
+        hdulist = reduce_sdss(fn,
+                              caldir=options.caldir,
+                              fixwcs=options.fixwcs,)
 
         object = hdulist[0].header['NAME']
         filtername = hdulist[0].header['FILTER']
