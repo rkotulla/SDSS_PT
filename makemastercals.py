@@ -49,8 +49,13 @@ def make_master_bias(filelist):
 
 
 
-def make_master_flat(filelist, bias_hdu):
+def make_master_flat(filelist, bias_hdu, write_norm_flat=False,
+                     good_flux=None):
 
+    if (good_flux is None):
+        good_flux=None
+
+    logger = logging.getLogger("MakeMasterFlat")
     datablocks = []
     for fn in filelist:
 
@@ -69,12 +74,24 @@ def make_master_flat(filelist, bias_hdu):
             int(0.25*flatraw.shape[0]):int(0.75*flatraw.shape[0]),
             int(0.25*flatraw.shape[1]):int(0.75*flatraw.shape[1])]
         norm_intensity = numpy.median(norm_area)
-        print norm_intensity
+        logger.debug("%s - mean flux: %.1f" % (fn, norm_intensity))
+
+        if (norm_intensity < good_flux[0]):
+            logger.warning("Excluding flat %s from mastercal, flux (%7.1f) to LOW" % (
+                fn, norm_intensity
+            ))
+            continue
+        elif (norm_intensity > good_flux[1]):
+            logger.warning("Excluding flat %s from mastercal, flux (%7.1f) to HIGH" % (
+                fn, norm_intensity
+            ))
+            continue
 
         flat_norm = flatraw / norm_intensity
         flat_norm[flat_norm < 0.1] = numpy.NaN
 
-        pyfits.PrimaryHDU(data=flat_norm).writeto(fn[:-4]+".norm.fits", clobber=True)
+        if (write_norm_flat):
+            pyfits.PrimaryHDU(data=flat_norm).writeto(fn[:-4]+".norm.fits", clobber=True)
         datablocks.append(flat_norm)
 
     masterflat = podi_imcombine.imcombine_data(
@@ -91,13 +108,9 @@ def make_master_flat(filelist, bias_hdu):
     return masterflat_hdu
 
 
-if __name__ == "__main__":
 
-    dirname = sys.argv[1]
-    filelist = glob.glob("%s/*.fit" % (dirname))
-    print filelist
 
-    cals_dir = sys.argv[2]
+def make_mastercals_from_filelist(filelist, cals_dir):
 
     #
     # Select all bias frames from file list
@@ -107,9 +120,10 @@ if __name__ == "__main__":
 
     for filename in filelist:
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            hdulist = pyfits.open(filename)
+        hdulist = sdss2fits.open_sdss_fits(filename)
+        # with warnings.catch_warnings():
+        #     warnings.simplefilter("ignore")
+        #     hdulist = pyfits.open(filename)
 
         hdr = hdulist[0].header
         filtername = hdr['FILTER']
@@ -122,11 +136,11 @@ if __name__ == "__main__":
             flat_list[filtername].append(filename)
 
 
-    print "\n\nBIAS:\n--%s" % ("\n--".join(bias_list))
-    bias_hdu = make_master_bias(bias_list)
-
-    bias_out = "%s/masterbias.fits" % (cals_dir)
-    bias_hdu.writeto(bias_out, clobber=True)
+    if (len(bias_list) > 0):
+        print "\n\nBIAS:\n--%s" % ("\n--".join(bias_list))
+        bias_hdu = make_master_bias(bias_list)
+        bias_out = "%s/masterbias.fits" % (cals_dir)
+        bias_hdu.writeto(bias_out, clobber=True)
 
 
     for filtername in flat_list:
@@ -134,8 +148,24 @@ if __name__ == "__main__":
         filelist = flat_list[filtername]
         print "\n\nFLATS for %s:\n--%s" % (filtername, "\n--".join(filelist))
 
+        if (len(filelist) <= 0):
+            print "No files found!"
+            continue
+
         masterflat_hdu = make_master_flat(filelist, bias_hdu=bias_hdu)
 
         flat_out = "%s/masterflat_%s.fits" % (cals_dir, filtername)
         print "Writing master-flat to %s" % (flat_out)
         masterflat_hdu.writeto(flat_out, clobber=True)
+
+
+
+if __name__ == "__main__":
+
+    dirname = sys.argv[1]
+    filelist = glob.glob("%s/*.fit" % (dirname))
+    print filelist
+
+    cals_dir = sys.argv[2]
+
+    make_mastercals_from_filelist(filelist, cals_dir)
