@@ -17,6 +17,7 @@ import dev_ccmatch
 from podi_definitions import SXcolumn
 from podi_collectcells import apply_wcs_distortion
 import podi_logging
+import podi_sitesetup as qr_sitesetup
 
 def reduce_sdss(fn,
                 overscan=True,
@@ -33,6 +34,7 @@ def reduce_sdss(fn,
     logger = logging.getLogger("ReduceSDSS(%s)" % (bn[:-4]))
 
     if (caldir is not None):
+        logger.debug("Checking master-cal inventory")
         bias_fn = "%s/masterbias.fits" % (caldir)
         if (os.path.isfile(bias_fn) and
             subtract_bias != False and
@@ -95,11 +97,11 @@ def reduce_sdss(fn,
     # subtract off bias if valid data
     #
     if (bias_hdu is not None):
-        logger.info("subtracting bias")
+        logger.debug("subtracting bias")
         data -= bias_hdu['SCI'].data
 
     if (flat_hdus is not None and filtername in flat_hdus):
-        logger.info("correcting flat-field")
+        logger.debug("correcting flat-field")
         data /= flat_hdus[filtername]['SCI'].data
 
     #
@@ -111,9 +113,11 @@ def reduce_sdss(fn,
     #
     # Import the WCS solution from the pre-canned distortion model
     #
-    basedir, _ = os.path.split(os.path.abspath(__file__))
-    wcsmodel = "%s/wcs/wcs.fits" % (basedir)
-    apply_wcs_distortion(wcsmodel, hdulist['SCI'], binning=1)
+    wcsmodel = False
+    if (wcsmodel):
+        basedir, _ = os.path.split(os.path.abspath(__file__))
+        wcsmodel = "%s/wcs/wcs.fits" % (basedir)
+        apply_wcs_distortion(wcsmodel, hdulist['SCI'], binning=1)
 
     if (fixwcs):
         # write current frame to temporary file
@@ -139,16 +143,20 @@ def reduce_sdss(fn,
         source_catalog[:, SXcolumn['ota']] = 0
         logger.info("Found %d sources" % (source_catalog.shape[0]))
 
-        hdulist[0].header['FILTER'] = "odi_%s" % (hdulist[0].header['FILTER'])
+        filtername = hdulist[0].header['FILTER']
+        hdulist[0].header['FILTER'] = "odi_%s" % (filtername)
         hdulist[1].header['OTA'] = 0
         ccmatch_results = dev_ccmatch.ccmatch(
             source_catalog=source_catalog,
             reference_catalog=None,
             input_hdu=hdulist,
             mode='otashear',
-            max_pointing_error=15,
+            max_pointing_error=[5,15,30],
             use_ota_coord_grid=False,
+            catalog_order=qr_sitesetup.wcscalib_order,
         )
+        hdulist[0].header['FILTER'] = filtername
+        del hdulist[1].header['OTA']
         #print ccmatch_results
 
 
@@ -169,6 +177,8 @@ if __name__ == "__main__":
                        default=None, type=str)
     parser.add_option("", "--fixwcs", dest="fixwcs",
                        action="store_true", default=False)
+    parser.add_option("", "--outdir", dest="outdir",
+                       default=None, type=str)
     (options, cmdline_args) = parser.parse_args()
 
 
@@ -182,7 +192,12 @@ if __name__ == "__main__":
         object = hdulist[0].header['NAME']
         filtername = hdulist[0].header['FILTER']
 
-        out_fn = "%s_%s_%s.fits" % (fn[:-4], object, filtername) #+'.red.fits'
+        if (options.outdir is not None):
+            _,bn = os.path.split(fn)
+            out_fn = "%s/%s_%s_%s.fits" % (
+                options.outdir, bn[:-4], object, filtername) #+'.red.fits'
+        else:
+            out_fn = "%s_%s_%s.fits" % (fn[:-4], object, filtername) #+'.red.fits'
         print "Writing results to %s" % (out_fn)
         hdulist.writeto(out_fn, clobber=True)
 
