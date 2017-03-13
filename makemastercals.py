@@ -5,6 +5,7 @@ import os
 import sys
 import pyfits
 import numpy
+import logging
 
 import glob
 import warnings
@@ -53,7 +54,7 @@ def make_master_flat(filelist, bias_hdu, write_norm_flat=False,
                      good_flux=None):
 
     if (good_flux is None):
-        good_flux=None
+        good_flux=[10000,45000]
 
     logger = logging.getLogger("MakeMasterFlat")
     datablocks = []
