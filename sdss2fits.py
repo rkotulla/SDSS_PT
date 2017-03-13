@@ -7,6 +7,9 @@ import pyfits
 import warnings
 import tempfile
 import numpy
+import gzip
+
+import logging
 
 from optparse import OptionParser
 
@@ -32,12 +35,23 @@ def convert_sdss(in_file, out_file):
 
 def open_sdss_fits(filename):
 
+    logger = logging.getLogger("OpenSDSS")
+
     tmp_file = tempfile.TemporaryFile(
         suffix=".fits", prefix="sdsspt_",
     )
-    #print tmp_file
-    hdu_raw = convert_sdss(filename, tmp_file)
-    #hdu_raw.writeto(tmp_file) #, mode='spool')
+    if (filename.endswith(".gz")):
+        unpack_fn = tempfile.NamedTemporaryFile(
+            suffix=".fits", prefix="gunzip_sdss"
+        )
+        with gzip.open(filename,"r") as gz:
+            unpack_fn.write(gz.read())
+        hdu_raw = convert_sdss(unpack_fn.name, tmp_file)
+
+    else:
+        #print tmp_file
+        hdu_raw = convert_sdss(filename, tmp_file)
+        #hdu_raw.writeto(tmp_file) #, mode='spool')
 
     tmp_file.seek(0)
     hdulist = pyfits.open(tmp_file)
@@ -52,7 +66,7 @@ def open_sdss_fits(filename):
     # Fix the data to account for it being UNSIGNED rather than signed int
     #
     data = hdulist[0].data.copy().astype(numpy.int32)
-    print data.dtype
+    # print data.dtype
     # data[data<0] *= -1
     data[data<0] += 2**16
     #data = data.astype(numpy.uint16)
@@ -65,18 +79,39 @@ def open_sdss_fits(filename):
         name="SCI"
     )
 
-    pixelscale = 1.16 / 3600.
+    pixelscale = 1.156 / 3600.
+    if ('CROTA2' in hdulist[0].header):
+        crota = hdulist[0].header['CROTA2']
+    else:
+        crota = 0
+    logger.debug("setting CROTA paramter to %d" % (crota))
     imagehdu.header['CRVAL1'] = hdulist[0].header['RADEG']
     imagehdu.header['CRVAL2'] = hdulist[0].header['DECDEG']
     imagehdu.header['CTYPE1'] = 'RA---TAN'
     imagehdu.header['CTYPE2'] = 'DEC--TAN'
-    imagehdu.header['CD1_1'] = pixelscale
-    imagehdu.header['CD2_2'] = pixelscale
+    imagehdu.header['CD1_1'] = pixelscale*numpy.cos(numpy.radians(crota))
+    imagehdu.header['CD2_2'] = pixelscale*numpy.cos(numpy.radians(crota))
+    imagehdu.header['CD1_2'] = -pixelscale*numpy.sin(numpy.radians(crota))
+    imagehdu.header['CD2_1'] = pixelscale*numpy.sin(numpy.radians(crota))
     imagehdu.header['CRPIX1'] = hdulist[0].header['NAXIS1']/2
     imagehdu.header['CRPIX2'] = hdulist[0].header['NAXIS2']/2
 
     imagehdu.header['OBJECT'] = \
         "%s -- %s" % (hdulist[0].header['NAME'], hdulist[0].header['FILTER'])
+
+    #
+    # Delete WCS-related keywords from primary header -
+    # these go in the ImageHDU header
+    #
+    for hdr in [
+        'CRPIX1', 'CRPIX2',
+        'CRVAL1', 'CRVAL2',
+        'CDELT1', 'CDELT2',
+        'CROTA2',
+        'CTYPE1', 'CTYPE2',]:
+        if hdr in primhdu:
+            del primhdu[hdr]
+
 
     # data = hdulist[0].data
     # print data.shape, data.dtype
