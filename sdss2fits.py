@@ -79,7 +79,7 @@ def open_sdss_fits(filename):
         name="SCI"
     )
 
-    pixelscale = 1.156 / 3600.
+    pixelscale = 1.161 / 3600.
     if ('CROTA2' in hdulist[0].header):
         crota = hdulist[0].header['CROTA2']
     else:
