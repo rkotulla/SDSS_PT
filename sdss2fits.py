@@ -103,14 +103,14 @@ def open_sdss_fits(filename):
     # Delete WCS-related keywords from primary header -
     # these go in the ImageHDU header
     #
-    for hdr in [
+    for hdrkey in [
         'CRPIX1', 'CRPIX2',
         'CRVAL1', 'CRVAL2',
         'CDELT1', 'CDELT2',
         'CROTA2',
         'CTYPE1', 'CTYPE2',]:
-        if hdr in primhdu:
-            del primhdu[hdr]
+        if hdrkey in primhdu.header:
+            del primhdu.header[hdrkey]
 
 
     # data = hdulist[0].data
