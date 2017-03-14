@@ -113,7 +113,7 @@ def reduce_sdss(fn,
     #
     # Import the WCS solution from the pre-canned distortion model
     #
-    wcsmodel = False
+    wcsmodel = True #False
     if (wcsmodel):
         basedir, _ = os.path.split(os.path.abspath(__file__))
         wcsmodel = "%s/wcs/wcs.fits" % (basedir)
@@ -126,7 +126,9 @@ def reduce_sdss(fn,
             delete=True,
         )
         logger.debug("Writing temp file for sextractor: %s" % (tmpfile.name))
-        hdulist.writeto(tmpfile)
+        print("Writing temp file for sextractor: %s" % (tmpfile.name))
+        hdulist.info()
+        hdulist.writeto(tmpfile.name)
 
         # Run sextractor to get source catalog
         catfile, catfilename = tempfile.mkstemp(suffix=".cat")
@@ -199,6 +201,8 @@ if __name__ == "__main__":
         else:
             out_fn = "%s_%s_%s.fits" % (fn[:-4], object, filtername) #+'.red.fits'
         print "Writing results to %s" % (out_fn)
+        if (os.path.isfile(out_fn)):
+            os.remove(out_fn)
         hdulist.writeto(out_fn, clobber=True)
 
         # os.system("ds9 %s &" % (out_fn))
