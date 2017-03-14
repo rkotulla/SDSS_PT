@@ -117,8 +117,10 @@ def reduce_sdss(fn,
     if (wcsmodel):
         basedir, _ = os.path.split(os.path.abspath(__file__))
         wcsmodel = "%s/wcs/wcs.fits" % (basedir)
-        apply_wcs_distortion(wcsmodel, hdulist['SCI'], binning=1)
+        apply_wcs_distortion(wcsmodel, hdulist['SCI'], binning=1,
+                             skip_keywords=['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2'])
 
+    ccmatch_results = None
     if (fixwcs):
         # write current frame to temporary file
         tmpfile = tempfile.NamedTemporaryFile(
@@ -159,12 +161,15 @@ def reduce_sdss(fn,
         )
         hdulist[0].header['FILTER'] = filtername
         del hdulist[1].header['OTA']
-        #print ccmatch_results
+        print ccmatch_results
 
+        #
+        # Save the calibrated source catalog
+        #
 
     logger.info("done!")
 
-    return hdulist
+    return hdulist, ccmatch_results
 
 
 if __name__ == "__main__":
@@ -187,7 +192,7 @@ if __name__ == "__main__":
     show_list = []
 
     for fn in cmdline_args:
-        hdulist = reduce_sdss(fn,
+        hdulist, wcscalib = reduce_sdss(fn,
                               caldir=options.caldir,
                               fixwcs=options.fixwcs,)
 
