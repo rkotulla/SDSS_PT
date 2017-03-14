@@ -35,8 +35,8 @@ if __name__ == "__main__":
     #                    default=None, type=str)
     # parser.add_option("", "--fixwcs", dest="fixwcs",
     #                    action="store_true", default=False)
-    # parser.add_option("", "--outdir", dest="outdir",
-    #                    default=None, type=str)
+    parser.add_option("", "--outdir", dest="out_dir",
+                      default=None, type=str)
     (options, cmdline_args) = parser.parse_args()
 
 
@@ -107,10 +107,14 @@ if __name__ == "__main__":
         for sci_frame in sci_list:
 
             logger.info("Working on %s" % (sci_frame))
-            hdulist = reduce_sdsspt.reduce_sdss(
-                fn=sci_frame,
-                caldir=cals_dir,
-                fixwcs=True)
+            try:
+                hdulist = reduce_sdsspt.reduce_sdss(
+                    fn=sci_frame,
+                    caldir=cals_dir,
+                    fixwcs=True)
+            except:
+                podi_logging.log_exception()
+                continue
 
             object = hdulist[0].header['NAME']
             filtername = hdulist[0].header['FILTER']
@@ -118,7 +122,10 @@ if __name__ == "__main__":
             _, bn_ext = os.path.split(sci_frame)
             bn = os.path.splitext(bn_ext)[0]
             out_base_fn = "%s_%s_%s.fits" % (bn, object, filtername)
-            out_fn = os.path.join(night_dir,out_base_fn)
+            if (options.out_dir is not None):
+                out_fn = os.path.join(options.out_dir,out_base_fn)
+            else:
+                out_fn = os.path.join(night_dir,out_base_fn)
 
             logger.debug("Writing results to %s" % (out_fn))
             if (os.path.isfile(out_fn)):
