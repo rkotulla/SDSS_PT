@@ -7,6 +7,7 @@ import numpy
 from optparse import OptionParser
 import tempfile
 import logging
+import scipy.stats
 
 import sdss2fits
 
@@ -20,6 +21,7 @@ import podi_logging
 import podi_sitesetup as qr_sitesetup
 import podi_photcalib
 import podi_commandline
+import podi_fitskybackground
 
 def reduce_sdss(fn,
                 overscan=True,
@@ -31,7 +33,8 @@ def reduce_sdss(fn,
                 photcalib=False,
 
                 bias_hdu=None,
-                flat_hdus=None,):
+                flat_hdus=None,
+                out_basename=None):
 
     _,bn = os.path.split(fn)
     logger = logging.getLogger("ReduceSDSS(%s)" % (bn[:-4]))
@@ -170,10 +173,12 @@ def reduce_sdss(fn,
             max_pointing_error=[5,15,30],
             use_ota_coord_grid=False,
             catalog_order=qr_sitesetup.wcscalib_order,
+            mag_limit=17.,
+            mag_limit_filter=filtername,
         )
         hdulist[0].header['FILTER'] = filtername
         del hdulist[1].header['OTA']
-        print ccmatch_results
+        # print ccmatch_results
 
         #
         # Save the calibrated source catalog
@@ -187,7 +192,7 @@ def reduce_sdss(fn,
         zeropoint_median, zeropoint_std, odi_sdss_matched, zeropoint_exptime = \
             podi_photcalib.photcalib(
                  source_cat=ccmatch_results['calibrated_src_cat'],
-                 output_filename="testtesttest",
+                 output_filename=out_basename if out_basename is not None else "testtesttest",
                  filtername='odi_%s' % (filtername),
                  exptime=exptime,
                  diagplots=True,
@@ -198,11 +203,19 @@ def reduce_sdss(fn,
                 photcalib_odi_aperture=8.0 #'auto',
             )
         numpy.savetxt("sdss_matched.cat", odi_sdss_matched)
-        print photcalib_details
+        # print photcalib_details
 
     #
     # Sample the background intensity
     #
+    skyregions = podi_fitskybackground.sample_background(
+        data=hdulist['SCI'].data,
+        wcs=None, starcat=None,
+    )
+    skyregions = numpy.array(skyregions)
+    # print skyregions
+    skystats = scipy.stats.scoreatpercentile(skyregions[:, 4], [16,50,84])
+    print skystats
 
 
     logger.info("done!")
@@ -232,11 +245,21 @@ if __name__ == "__main__":
     show_list = []
 
     for fn in cmdline_args:
+
+        _basedir, _bn = os.path.split(os.path.abspath(fn))
+        bn = os.path.splitext(_bn)[0]
+        print _basedir, _bn
+        if (options.outdir is not None):
+            out_fn = "%s/%s" % (options.outdir, bn)
+        else:
+            out_basename = "%s/%s" % (_basedir, bn)
+
         hdulist, wcscalib = reduce_sdss(
             fn,
             caldir=options.caldir,
             fixwcs=options.fixwcs,
             photcalib=options.photcalib,
+            out_basename=out_basename,
         )
 
         object = hdulist[0].header['NAME']
@@ -244,10 +267,10 @@ if __name__ == "__main__":
 
         if (options.outdir is not None):
             _,bn = os.path.split(fn)
-            out_fn = "%s/%s_%s_%s.fits" % (
+            out_fn = "%s/%s_%s_%s" % (
                 options.outdir, bn[:-4], object, filtername) #+'.red.fits'
         else:
-            out_fn = "%s_%s_%s.fits" % (fn[:-4], object, filtername) #+'.red.fits'
+            out_fn = "%s_%s_%s" % (fn[:-4], object, filtername) #+'.red.fits'
         print "Writing results to %s" % (out_fn)
         if (os.path.isfile(out_fn)):
             os.remove(out_fn)
