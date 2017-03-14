@@ -18,6 +18,8 @@ from podi_definitions import SXcolumn
 from podi_collectcells import apply_wcs_distortion
 import podi_logging
 import podi_sitesetup as qr_sitesetup
+import podi_photcalib
+import podi_commandline
 
 def reduce_sdss(fn,
                 overscan=True,
@@ -26,6 +28,7 @@ def reduce_sdss(fn,
                 subtract_bias=None,
                 correct_flat=None,
                 fixwcs=False,
+                photcalib=False,
 
                 bias_hdu=None,
                 flat_hdus=None,):
@@ -120,6 +123,10 @@ def reduce_sdss(fn,
         apply_wcs_distortion(wcsmodel, hdulist['SCI'], binning=1,
                              skip_keywords=['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2'])
 
+    filtername = hdulist[0].header['FILTER']
+    exptime = hdulist[0].header['EXPTIME']
+    object = hdulist[0].header['NAME']
+
     ccmatch_results = None
     if (fixwcs):
         # write current frame to temporary file
@@ -136,18 +143,23 @@ def reduce_sdss(fn,
         catfile, catfilename = tempfile.mkstemp(suffix=".cat")
         sex_config = "%s/config/wcsfix.sex" % (config.qr_dir)
         sex_param = "%s/config/wcsfix.sexparam" % (config.qr_dir)
-        sex_cmd = "sex -c %s -PARAMETERS_NAME %s -CATALOG_NAME %s %s" % (
+        sex_cmd = """
+        sex -c %s
+        -PARAMETERS_NAME %s
+        -CATALOG_NAME %s
+        -PHOT_APERTURES 2,3,4,5,6,8,10,12
+        %s""" % (
             sex_config, sex_param, catfilename, tmpfile.name
         )
+#        -PHOT_APERTURES 4,6,8,10,12,16,20,24
         logger.info("Running sextractor: %s" % (sex_cmd))
-        os.system(sex_cmd)
+        os.system(" ".join(sex_cmd.split()))
 
         # load catalog
         source_catalog = numpy.loadtxt(catfilename)
         source_catalog[:, SXcolumn['ota']] = 0
         logger.info("Found %d sources" % (source_catalog.shape[0]))
 
-        filtername = hdulist[0].header['FILTER']
         hdulist[0].header['FILTER'] = "odi_%s" % (filtername)
         hdulist[1].header['OTA'] = 0
         ccmatch_results = dev_ccmatch.ccmatch(
@@ -167,6 +179,32 @@ def reduce_sdss(fn,
         # Save the calibrated source catalog
         #
 
+    if (fixwcs and photcalib):
+        photcalib_details = {}
+        titlestring = "SDSS-PT: %s %s %dsec" % (object, filtername, exptime)
+        qr_options = podi_commandline.set_default_options()
+        qr_options['otalevelplots'] = False
+        zeropoint_median, zeropoint_std, odi_sdss_matched, zeropoint_exptime = \
+            podi_photcalib.photcalib(
+                 source_cat=ccmatch_results['calibrated_src_cat'],
+                 output_filename="testtesttest",
+                 filtername='odi_%s' % (filtername),
+                 exptime=exptime,
+                 diagplots=True,
+                 plottitle=titlestring,
+                 otalist=None,
+                 options=qr_options,
+                 detailed_return=photcalib_details,
+                photcalib_odi_aperture=8.0 #'auto',
+            )
+        numpy.savetxt("sdss_matched.cat", odi_sdss_matched)
+        print photcalib_details
+
+    #
+    # Sample the background intensity
+    #
+
+
     logger.info("done!")
 
     return hdulist, ccmatch_results
@@ -184,6 +222,8 @@ if __name__ == "__main__":
                        default=None, type=str)
     parser.add_option("", "--fixwcs", dest="fixwcs",
                        action="store_true", default=False)
+    parser.add_option("", "--photcalib", dest="photcalib",
+                       action="store_true", default=False)
     parser.add_option("", "--outdir", dest="outdir",
                        default=None, type=str)
     (options, cmdline_args) = parser.parse_args()
@@ -192,9 +232,12 @@ if __name__ == "__main__":
     show_list = []
 
     for fn in cmdline_args:
-        hdulist, wcscalib = reduce_sdss(fn,
-                              caldir=options.caldir,
-                              fixwcs=options.fixwcs,)
+        hdulist, wcscalib = reduce_sdss(
+            fn,
+            caldir=options.caldir,
+            fixwcs=options.fixwcs,
+            photcalib=options.photcalib,
+        )
 
         object = hdulist[0].header['NAME']
         filtername = hdulist[0].header['FILTER']
