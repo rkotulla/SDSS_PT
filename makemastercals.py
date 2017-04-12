@@ -23,13 +23,14 @@ def make_master_bias(filelist):
     datablocks = []
     for fn in filelist:
 
-        valid_hdu = reduce_sdsspt.reduce_sdss(
+        valid_hdu, extras = reduce_sdsspt.reduce_sdss(
             fn,
             overscan=True,
             trim=True,
             subtract_bias=False,
             correct_flat=False,
         )
+        # valid_hdu.info()
         datablocks.append(valid_hdu['SCI'].data)
 
     # print datablocks
@@ -60,7 +61,7 @@ def make_master_flat(filelist, bias_hdu, write_norm_flat=False,
     datablocks = []
     for fn in filelist:
 
-        valid_hdu = reduce_sdsspt.reduce_sdss(
+        valid_hdu, extras = reduce_sdsspt.reduce_sdss(
             fn=fn,
             overscan=True, trim=True,
             subtract_bias=True,
