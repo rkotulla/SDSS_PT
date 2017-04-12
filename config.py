@@ -1,1 +1,1 @@
-qr_dir = '/work/quickreduce/development'
+qr_dir = '/work/quickreduce/mods_rk'

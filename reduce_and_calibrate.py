@@ -33,8 +33,8 @@ if __name__ == "__main__":
     #                    action="store_true", default=False)
     # parser.add_option("", "--cals", dest="caldir",
     #                    default=None, type=str)
-    # parser.add_option("", "--fixwcs", dest="fixwcs",
-    #                    action="store_true", default=False)
+    parser.add_option("", "--reusecals", dest="reuse_cals",
+                       action="store_true", default=False)
     parser.add_option("", "--outdir", dest="out_dir",
                       default=None, type=str)
     (options, cmdline_args) = parser.parse_args()
@@ -94,12 +94,15 @@ if __name__ == "__main__":
         # Now create all master-calibrations (bias & flats)
         #
         cals_dir = os.path.join(night_dir, 'cals/')
-        if (not os.path.isdir(cals_dir)):
-            os.makedirs(cals_dir)
-        logger.info("Creating mastercals, writing to %s" % (cals_dir))
-        makemastercals.make_mastercals_from_filelist(
-            filelist=cal_list,
-            cals_dir=cals_dir)
+        if (os.path.isdir(cals_dir) and options.reuse_cals):
+            logger.info("Re-using existing calibrations")
+        else:
+            if (not os.path.isdir(cals_dir)):
+                os.makedirs(cals_dir)
+            logger.info("Creating mastercals, writing to %s" % (cals_dir))
+            makemastercals.make_mastercals_from_filelist(
+                filelist=cal_list,
+                cals_dir=cals_dir)
 
         #
         # And now go and reduce each of the science frames
@@ -107,11 +110,22 @@ if __name__ == "__main__":
         for sci_frame in sci_list:
 
             logger.info("Working on %s" % (sci_frame))
+
+            _, bn_ext = os.path.split(os.path.abspath(sci_frame))
+            bn = os.path.splitext(bn_ext)[0]
+            if (options.out_dir is not None):
+                out_base = os.path.join(options.out_dir,bn)
+            else:
+                out_base = os.path.join(night_dir,bn)
+
             try:
-                hdulist = reduce_sdsspt.reduce_sdss(
+                hdulist, extras = reduce_sdsspt.reduce_sdss(
                     fn=sci_frame,
                     caldir=cals_dir,
-                    fixwcs=True)
+                    fixwcs=True,
+                    photcalib=True,
+                    out_basename=out_base,
+                )
             except:
                 podi_logging.log_exception()
                 continue
@@ -119,7 +133,7 @@ if __name__ == "__main__":
             object = hdulist[0].header['NAME']
             filtername = hdulist[0].header['FILTER']
 
-            _, bn_ext = os.path.split(sci_frame)
+            _, bn_ext = os.path.split(os.path.abspath(sci_frame))
             bn = os.path.splitext(bn_ext)[0]
             out_base_fn = "%s_%s_%s.fits" % (bn, object, filtername)
             if (options.out_dir is not None):
