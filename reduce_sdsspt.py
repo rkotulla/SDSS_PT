@@ -22,6 +22,8 @@ import podi_sitesetup as qr_sitesetup
 import podi_photcalib
 import podi_commandline
 import podi_fitskybackground
+import podi_diagnosticplots
+
 
 def reduce_sdss(fn,
                 overscan=True,
@@ -34,7 +36,8 @@ def reduce_sdss(fn,
 
                 bias_hdu=None,
                 flat_hdus=None,
-                out_basename=None):
+                out_basename=None,
+                ):
 
     _,bn = os.path.split(fn)
     logger = logging.getLogger("ReduceSDSS(%s)" % (bn[:-4]))
@@ -130,6 +133,8 @@ def reduce_sdss(fn,
     exptime = hdulist[0].header['EXPTIME']
     object = hdulist[0].header['NAME']
 
+    qr_options = podi_commandline.set_default_options()
+    qr_options['otalevelplots'] = False
     ccmatch_results = None
     if (fixwcs):
         # write current frame to temporary file
@@ -173,26 +178,58 @@ def reduce_sdss(fn,
             max_pointing_error=[5,15,30],
             use_ota_coord_grid=False,
             catalog_order=qr_sitesetup.wcscalib_order,
-            mag_limit=17.,
-            mag_limit_filter=filtername,
+            #mag_limit=19.,
+            #mag_limit_filter=filtername,
         )
-        hdulist[0].header['FILTER'] = filtername
-        del hdulist[1].header['OTA']
         # print ccmatch_results
 
         #
         # Save the calibrated source catalog
         #
+        title_info = hdulist[0].header.copy()
+
+        wcs_matched_cat = ccmatch_results['matched_src+2mass']
+        global_source_cat = ccmatch_results['calibrated_src_cat']
+        wcs_quality = dev_ccmatch.global_wcs_quality(wcs_matched_cat, hdulist)
+
+        # Create the WCS scatter plot
+        plotfilename = "%s.wcs1" % (out_basename)
+        podi_diagnosticplots.wcsdiag_scatter(matched_radec_odi=wcs_matched_cat[:,0:2],
+                                             matched_radec_2mass=wcs_matched_cat[:,-2:],
+                                             matched_ota=wcs_matched_cat[:,SXcolumn['ota']],
+                                             matched_odierror=wcs_matched_cat[:, SXcolumn['mag_err_auto']],
+                                             filename=plotfilename,
+                                             options=qr_options,
+                                             ota_wcs_stats=wcs_quality,
+                                             also_plot_singleOTAs=False,
+                                             title_info=title_info)
+
+        # Create the WCS shift plot
+        plotfilename = "%s.wcs2" % (out_basename)
+        podi_diagnosticplots.wcsdiag_shift(matched_radec_odi=wcs_matched_cat[:,0:2],
+                                           matched_radec_2mass=wcs_matched_cat[:,-2:],
+                                           matched_ota=wcs_matched_cat[:,SXcolumn['ota']],
+                                           filename=plotfilename, #outputfile[:-5]+".wcs2",
+                                           options=qr_options,
+                                           ota_wcs_stats=wcs_quality,
+                                           ota_outlines=None,
+                                           also_plot_singleOTAs=False,
+                                           title_info=title_info)
+
+        hdulist[0].header['FILTER'] = filtername
+        del hdulist[1].header['OTA']
+
+        numpy.savetxt(out_basename+".astrmref.cat", ccmatch_results['2mass-catalog'])
+        numpy.savetxt(out_basename+".astrmref.cat.raw", ccmatch_results['astrom_ref_cat'])
+        print "Used catalogs:\n%s" % "\n".join(ccmatch_results['catalog_filenames'])
 
     if (fixwcs and photcalib):
         photcalib_details = {}
         titlestring = "SDSS-PT: %s %s %dsec" % (object, filtername, exptime)
-        qr_options = podi_commandline.set_default_options()
-        qr_options['otalevelplots'] = False
         zeropoint_median, zeropoint_std, odi_sdss_matched, zeropoint_exptime = \
             podi_photcalib.photcalib(
                  source_cat=ccmatch_results['calibrated_src_cat'],
-                 output_filename=out_basename if out_basename is not None else "testtesttest",
+                 output_filename=out_basename+".xxxx" if out_basename is not None else "testtesttest.xxxx",
                  filtername='odi_%s' % (filtername),
                  exptime=exptime,
                  diagplots=True,
@@ -215,7 +252,7 @@ def reduce_sdss(fn,
     skyregions = numpy.array(skyregions)
     # print skyregions
     skystats = scipy.stats.scoreatpercentile(skyregions[:, 4], [16,50,84])
-    print skystats
+    # print skystats
 
 
     logger.info("done!")
