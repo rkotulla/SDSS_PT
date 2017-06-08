@@ -37,6 +37,8 @@ if __name__ == "__main__":
                        action="store_true", default=False)
     parser.add_option("", "--outdir", dest="out_dir",
                       default=None, type=str)
+    parser.add_option("", "--object", dest="object",
+                      default=None, type=str)
     (options, cmdline_args) = parser.parse_args()
 
 
@@ -85,6 +87,15 @@ if __name__ == "__main__":
                 cal_list.append(in_file)
 
             else:
+                object_name = hdulist[0].header['OBJECT']
+                if (options.object is not None):
+                    if (not object_name.startswith(options.object)):
+                        logger.debug("%s, OBJECT %s --> not selected (%s)" % (
+                            in_file, object_name, options.object))
+                        continue
+                    else:
+                        logger.debug("%s, OBJECT %s --> valid object (%s)" % (
+                            in_file, object_name, options.object))
                 sci_list.append(in_file)
         print
         logger.info("Found %d SCIs and %d CALs" % (
