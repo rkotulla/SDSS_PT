@@ -39,6 +39,8 @@ if __name__ == "__main__":
                       default=None, type=str)
     parser.add_option("", "--object", dest="object",
                       default=None, type=str)
+    parser.add_option("", "--clobber", dest="clobber",
+                      default=False, action="store_true")
     (options, cmdline_args) = parser.parse_args()
 
 
@@ -132,6 +134,21 @@ if __name__ == "__main__":
             else:
                 out_base = os.path.join(night_dir,bn)
 
+            tmphdu = sdss2fits.open_sdss_fits(sci_frame)
+            object = tmphdu[0].header['NAME']
+            filtername = tmphdu[0].header['FILTER']
+
+            _, bn_ext = os.path.split(os.path.abspath(sci_frame))
+            bn = os.path.splitext(bn_ext)[0]
+            out_base_fn = "%s_%s_%s.fits" % (bn, object, filtername)
+            if (options.out_dir is not None):
+                out_fn = os.path.join(options.out_dir,out_base_fn)
+            else:
+                out_fn = os.path.join(night_dir,out_base_fn)
+            if (os.path.isfile(out_fn) and not options.clobber):
+                logger.info("Output file %s exists, skipping..." % (out_fn))
+                continue
+
             try:
                 hdulist, extras = reduce_sdsspt.reduce_sdss(
                     fn=sci_frame,
@@ -144,16 +161,7 @@ if __name__ == "__main__":
                 podi_logging.log_exception()
                 continue
 
-            object = hdulist[0].header['NAME']
-            filtername = hdulist[0].header['FILTER']
 
-            _, bn_ext = os.path.split(os.path.abspath(sci_frame))
-            bn = os.path.splitext(bn_ext)[0]
-            out_base_fn = "%s_%s_%s.fits" % (bn, object, filtername)
-            if (options.out_dir is not None):
-                out_fn = os.path.join(options.out_dir,out_base_fn)
-            else:
-                out_fn = os.path.join(night_dir,out_base_fn)
 
             logger.debug("Writing results to %s" % (out_fn))
             if (os.path.isfile(out_fn)):
