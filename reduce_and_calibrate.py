@@ -101,6 +101,9 @@ if __name__ == "__main__":
         logger.info("Found %d SCIs and %d CALs" % (
             len(sci_list), len(cal_list)))
 
+        if (len(sci_list) <= 0 or len(cal_list) <= 0):
+            continue
+
         #
         # Now create all master-calibrations (bias & flats)
         #
