@@ -23,7 +23,7 @@ import podi_photcalib
 import podi_commandline
 import podi_fitskybackground
 import podi_diagnosticplots
-
+from podi_definitions import three_sigma_clip
 
 def reduce_sdss(fn,
                 overscan=True,
@@ -190,7 +190,8 @@ def reduce_sdss(fn,
 
         wcs_matched_cat = ccmatch_results['matched_src+2mass']
         global_source_cat = ccmatch_results['calibrated_src_cat']
-        wcs_quality = dev_ccmatch.global_wcs_quality(wcs_matched_cat, hdulist)
+        # wcs_quality = dev_ccmatch.global_wcs_quality(wcs_matched_cat, hdulist)
+        wcs_quality = None
 
         # Create the WCS scatter plot
         plotfilename = "%s.wcs1" % (out_basename)
@@ -241,6 +242,38 @@ def reduce_sdss(fn,
             )
         numpy.savetxt("sdss_matched.cat", odi_sdss_matched)
         # print photcalib_details
+
+        hdulist[0].header['PHOTMCAT'] = (photcalib_details['catalog'])
+        hdulist[0].header['PHOTFILT'] = (photcalib_details['reference_filter'])
+
+        hdulist[0].header["PHOTZP"] = (zeropoint_median, "phot. zeropoint corr for exptime")
+        hdulist[0].header["PHOTZPSD"] = (zeropoint_std, "zeropoint std.dev.")
+        hdulist[0].header["PHOTZP_X"] = (zeropoint_exptime, "phot zeropoint for this frame")
+        hdulist[0].header["PHOTZPSP"] = (photcalib_details['zp_upper1sigma'], "phot ZP upper 1sigma limit")
+        hdulist[0].header["PHOTZPSM"] = (photcalib_details['zp_lower1sigma'], "phot ZP lower 1sigma limit")
+        hdulist[0].header["PHOTZPER"] = (photcalib_details['stderrofmean'], "phot ZP std.err of the mean")
+        hdulist[0].header["PHOTZP_N"] = (photcalib_details['n_clipped'], "number stars in clipped distrib.")
+        hdulist[0].header["PHOTZPN0"] = (photcalib_details['n_raw'], "total number of matched ref stars")
+
+        hdulist[0].header["MAGZERO"] = (photcalib_details['median'], "phot. zeropoint corr for exptime")
+        hdulist[0].header["MAGZSIG"] = (photcalib_details['std'], "phot ZP dispersion")
+        hdulist[0].header["MAGZERR"] = (photcalib_details['stderrofmean'], "phot ZP uncertainty")
+
+        # Add some information on what apertures were used for the photometric calibration
+        hdulist[0].header['MAG0MODE'] = (photcalib_details['aperture_mode'], "how was aperture determined")
+        hdulist[0].header['MAG0SIZE'] = (photcalib_details['aperture_size'], "what aperture size was used")
+        hdulist[0].header['MAG0_MAG'] = (photcalib_details['aperture_mag'], "id string for magnitude")
+        hdulist[0].header['MAG0_ERR'] = (photcalib_details['aperture_magerr'], "is string for mag error")
+
+        # Also use the matched catalog to determine the seeing of only stars
+        star_seeing = odi_sdss_matched[:, SXcolumn['fwhm_world']+2] * 3600.
+        cleaned = three_sigma_clip(star_seeing)
+        seeing = numpy.median(cleaned)
+        logger.debug("Seeing is %.2fdeg = %.2f arcsec" % (seeing, seeing*3600.))
+        hdulist[0].header['FWHMSTAR'] = (seeing, "median FWHM of SDSS-matched stars")
+        hdulist[0].header['SEEING'] = (seeing, "Seeing [arcsec]")
+        hdulist[0].header['SEEING_N'] = (cleaned.shape[0], "number of stars in seeing comp")
+
 
     #
     # Sample the background intensity
