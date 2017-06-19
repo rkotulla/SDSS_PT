@@ -123,7 +123,7 @@ def make_mastercals_from_filelist(filelist, cals_dir):
     # Select all bias frames from file list
     #
     bias_list = []
-    flat_list = {'u': [], 'g': [], 'r': [], 'i': [], 'z': []}
+    flat_list = {'u': [], 'g': [], 'r': [], 'i': [], 'z': [], 'unknown': []}
 
     for filename in filelist:
 
