@@ -65,7 +65,12 @@ def open_sdss_fits(filename):
     #
     # Fix the data to account for it being UNSIGNED rather than signed int
     #
-    data = hdulist[0].data.copy().astype(numpy.int32)
+    try:
+        data = hdulist[0].data.copy().astype(numpy.int32)
+    except TypeError:
+        logger.critical("Unable to access FITS data, corrupt file?")
+        return None
+
     # print data.dtype
     # data[data<0] *= -1
     data[data<0] += 2**16
@@ -170,6 +175,9 @@ if __name__ =="__main__":
         # convert_sdss(infile, outfile)
 
         hdu = open_sdss_fits(infile)
+        if (hdu is None):
+            continue
+
         hdu.writeto(outfile, clobber=True)
 
         if (options.show):

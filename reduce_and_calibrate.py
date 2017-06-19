@@ -73,6 +73,9 @@ if __name__ == "__main__":
 
             logger.debug("Checking out %s" % (in_file))
             hdulist = sdss2fits.open_sdss_fits(in_file)
+            if (hdulist is None):
+                continue
+
             # with warnings.catch_warnings():
             #     warnings.simplefilter("ignore")
             #     hdulist = pyfits.open(in_file)
@@ -135,6 +138,9 @@ if __name__ == "__main__":
                 out_base = os.path.join(night_dir,bn)
 
             tmphdu = sdss2fits.open_sdss_fits(sci_frame)
+            if (tmphdu is None):
+                continue
+
             object = tmphdu[0].header['NAME']
             filtername = tmphdu[0].header['FILTER']
 

@@ -30,6 +30,9 @@ def make_master_bias(filelist):
             subtract_bias=False,
             correct_flat=False,
         )
+        if (valid_hdu is None):
+            continue
+
         # valid_hdu.info()
         datablocks.append(valid_hdu['SCI'].data)
 
@@ -68,6 +71,8 @@ def make_master_flat(filelist, bias_hdu, write_norm_flat=False,
             bias_hdu=bias_hdu,
             correct_flat=False,
         )
+        if (valid_hdu is None):
+            continue
 
         # normalize flatfield using the central 50%
         flatraw = valid_hdu['SCI'].data
@@ -123,6 +128,8 @@ def make_mastercals_from_filelist(filelist, cals_dir):
     for filename in filelist:
 
         hdulist = sdss2fits.open_sdss_fits(filename)
+        if (hdulist is None):
+            continue
         # with warnings.catch_warnings():
         #     warnings.simplefilter("ignore")
         #     hdulist = pyfits.open(filename)

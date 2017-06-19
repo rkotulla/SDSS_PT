@@ -66,6 +66,9 @@ def reduce_sdss(fn,
     # print flat_hdus
 
     hdulist = sdss2fits.open_sdss_fits(fn)
+    if (hdulist is None):
+        return None, None
+
     # hdulist.info()
 
     filtername = hdulist[0].header['FILTER']
@@ -175,11 +178,13 @@ def reduce_sdss(fn,
             reference_catalog=None,
             input_hdu=hdulist,
             mode='otashear',
-            max_pointing_error=[5,15,30],
+            max_pointing_error=[8,15,30],
             use_ota_coord_grid=False,
             catalog_order=qr_sitesetup.wcscalib_order,
-            #mag_limit=19.,
-            #mag_limit_filter=filtername,
+            mag_limit=14.,
+            mag_limit_filter=filtername,
+            matching_radius_rough=10,
+            matching_radius_fine=4,
         )
         # print ccmatch_results
 
